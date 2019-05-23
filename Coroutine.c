@@ -3,14 +3,22 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#if defined(_WIN32) || defined(__MINGW32__) || defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(__clang__) || defined(__MINGW32__) || defined(__CYGWIN__)
+#   define THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__)
+#   define THREAD_LOCAL __thread
+#else
+#   define THREAD_LOCAL
+#endif
+
+#if defined(_WIN32)
 /* End of Windows Fiber version */
 #define VC_EXTRALEAN
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-__declspec(thread) static void*      s_threadFiber;
-__declspec(thread) static Coroutine* s_runningCoroutine;
+static THREAD_LOCAL void*      s_threadFiber;
+static THREAD_LOCAL Coroutine* s_runningCoroutine;
 
 struct Coroutine 
 {
@@ -28,9 +36,7 @@ static void WINAPI Fiber_Entry(void* params)
     Coroutine* coroutine = (Coroutine*)params;
     coroutine->func(coroutine->args);
 
-    DeleteFiber(coroutine->fiber);
     coroutine->fiber = NULL;
-
     SwitchToFiber(s_threadFiber);
 }
 
@@ -70,7 +76,6 @@ void CoroutineDestroy(Coroutine* coroutine)
 {
     if (coroutine)
     {
-        DeleteFiber(coroutine->fiber);
         free(coroutine);
     }
 }
@@ -151,7 +156,7 @@ struct Coroutine
     char        stackBuffer[STACK_SIZE];
 };
 
-static __thread Coroutine* s_runningCoroutine;
+static THREAD_LOCAL Coroutine* s_runningCoroutine;
 
 void Coroutine_Entry(Coroutine* coroutine)
 {
@@ -247,3 +252,4 @@ int CoroutineStatus(Coroutine* coroutine)
 #else
 #error Unsupported platform
 #endif
+
