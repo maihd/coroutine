@@ -109,7 +109,7 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
     SwitchToFiber(s_threadFiber);
 }
 /* End of Windows Fiber version */
-#elif defined(__linux__) 
+#elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
 #if defined(__APPLE__)
