@@ -19,8 +19,8 @@ do
 
     files {
         path.join(ROOT_DIR, "Coroutine.h"),
+        path.join(ROOT_DIR, "Coroutine.c"),
         path.join(ROOT_DIR, "Coroutine_Test.c"),
-        path.join(ROOT_DIR, "Coroutine_Windows.c"),
     }
 
     filter {}

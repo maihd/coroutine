@@ -67,3 +67,4 @@ COROUTINE_API int           CoroutineResume(Coroutine* coroutine);
 #if __cplusplus
 }
 #endif
+
