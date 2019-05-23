@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#if defined(_MSC_VER) || defined(__clang__) || defined(__MINGW32__) || defined(__CYGWIN__)
+#if defined(_MSC_VER) || (defined(_WIN32) && defined(__clang__)) || defined(__MINGW32__) || defined(__CYGWIN__)
 #   define THREAD_LOCAL     static __declspec(thread)
 #   define STATIC_INLINE    static __forceinline
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) || defined(__clang__)
 #   define THREAD_LOCAL     static __thread
 #   define STATIC_INLINE    static __inline__ __attribute__((always_inline))
 #else
@@ -114,171 +114,175 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 
 #if defined(__APPLE__)
 /* Begin of Apple ucontext implementation */
-#   include <stdarg.h>
-#   include <errno.h>
-#   include <stdlib.h>
-#   include <unistd.h>
-#   include <string.h>
-#   include <assert.h>
-#   include <time.h>
-#   include <sys/time.h>
-#   include <sys/types.h>
-#   include <sys/wait.h>
-#   include <sched.h>
-#   include <signal.h>
-#   include <sys/utsname.h>
-#   include <inttypes.h>
-#   include <sys/ucontext.h>
-#	define mcontext libthread_mcontext
-#	define mcontext_t libthread_mcontext_t
-#	define ucontext libthread_ucontext
-#	define ucontext_t libthread_ucontext_t
 
-#	if defined(__i386__)
-/* Begin of Apple ucontext x86 version */
-#       define setcontext(u) setmcontext(&(u)->uc_mcontext)
-#       define getcontext(u) getmcontext(&(u)->uc_mcontext)
-typedef struct mcontext mcontext_t;
-typedef struct ucontext ucontext_t;
+#   define _XOPEN_SOURCE
+#   include <ucontext.h>
 
-typedef void (MakeContextCallback)(void);
+// #   include <stdarg.h>
+// #   include <errno.h>
+// #   include <stdlib.h>
+// #   include <unistd.h>
+// #   include <string.h>
+// #   include <assert.h>
+// #   include <time.h>
+// #   include <sys/time.h>
+// #   include <sys/types.h>
+// #   include <sys/wait.h>
+// #   include <sched.h>
+// #   include <signal.h>
+// #   include <sys/utsname.h>
+// #   include <inttypes.h>
+// #   include <sys/ucontext.h>
+// #	define mcontext libthread_mcontext
+// #	define mcontext_t libthread_mcontext_t
+// #	define ucontext libthread_ucontext
+// #	define ucontext_t libthread_ucontext_t
 
-/*extern*/ int swapcontext(ucontext_t *, ucontext_t *);
-//  /*extern*/ void makecontext(ucontext_t*, void(*)(), int, ...);
-/*extern*/ void makecontext(ucontext_t *, MakeContextCallback *, int, ...);
-/*extern*/ int  getmcontext(mcontext_t *);
-/*extern*/ void setmcontext(mcontext_t *);
+// #	if defined(__i386__) || defined(__x86_64__)
+// /* Begin of Apple ucontext x86 version */
+// #       define setcontext(u) setmcontext(&(u)->uc_mcontext)
+// #       define getcontext(u) getmcontext(&(u)->uc_mcontext)
+// typedef struct mcontext mcontext_t;
+// typedef struct ucontext ucontext_t;
 
-/* #include <machine/ucontext.h> */
+// typedef void (MakeContextCallback)(void);
 
-struct mcontext {
-	/*
-	 * The first 20 fields must match the definition of
-	 * sigcontext. So that we can support sigcontext
-	 * and ucontext_t at the same time.
-	 */
-	long mc_onstack; /* XXX - sigcontext compat. */
-	long mc_gs;
-	long mc_fs;
-	long mc_es;
-	long mc_ds;
-	long mc_edi;
-	long mc_esi;
-	long mc_ebp;
-	long mc_isp;
-	long mc_ebx;
-	long mc_edx;
-	long mc_ecx;
-	long mc_eax;
-	long mc_trapno;
-	long mc_err;
-	long mc_eip;
-	long mc_cs;
-	long mc_eflags;
-	long mc_esp; /* machine state */
-	long mc_ss;
+// /*extern*/ int swapcontext(ucontext_t *, ucontext_t *);
+// //  /*extern*/ void makecontext(ucontext_t*, void(*)(), int, ...);
+// /*extern*/ void makecontext(ucontext_t *, MakeContextCallback *, int, ...);
+// /*extern*/ int  getmcontext(mcontext_t *);
+// /*extern*/ void setmcontext(mcontext_t *);
 
-	long mc_fpregs[28]; /* env87 + fpacc87 + u_long */
-	long __spare__[17];
-};
+// /* #include <machine/ucontext.h> */
 
-struct ucontext {
-	/*
-	 * Keep the order of the first two fields. Also,
-	 * keep them the first two fields in the structure.
-	 * This way we can have a union with struct
-	 * sigcontext and ucontext_t. This allows us to
-	 * support them both at the same time.
-	 * note: the union is not defined, though.
-	 */
-	sigset_t    uc_sigmask;
-	mcontext_t  uc_mcontext;
+// struct mcontext {
+// 	/*
+// 	 * The first 20 fields must match the definition of
+// 	 * sigcontext. So that we can support sigcontext
+// 	 * and ucontext_t at the same time.
+// 	 */
+// 	long mc_onstack; /* XXX - sigcontext compat. */
+// 	long mc_gs;
+// 	long mc_fs;
+// 	long mc_es;
+// 	long mc_ds;
+// 	long mc_edi;
+// 	long mc_esi;
+// 	long mc_ebp;
+// 	long mc_isp;
+// 	long mc_ebx;
+// 	long mc_edx;
+// 	long mc_ecx;
+// 	long mc_eax;
+// 	long mc_trapno;
+// 	long mc_err;
+// 	long mc_eip;
+// 	long mc_cs;
+// 	long mc_eflags;
+// 	long mc_esp; /* machine state */
+// 	long mc_ss;
 
-	struct __ucontext *uc_link;
-	stack_t            uc_stack;
-	long               __spare__[8];
-};
+// 	long mc_fpregs[28]; /* env87 + fpacc87 + u_long */
+// 	long __spare__[17];
+// };
 
-void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
-{
-	uintptr_t *sp;
+// struct ucontext {
+// 	/*
+// 	 * Keep the order of the first two fields. Also,
+// 	 * keep them the first two fields in the structure.
+// 	 * This way we can have a union with struct
+// 	 * sigcontext and ucontext_t. This allows us to
+// 	 * support them both at the same time.
+// 	 * note: the union is not defined, though.
+// 	 */
+// 	sigset_t    uc_sigmask;
+// 	mcontext_t  uc_mcontext;
 
-	sp = (uintptr_t *)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(void *);
-	sp -= argc;
-	sp = (void*)((uintptr_t)sp - (uintptr_t)sp % 16);	/* 16-align for OS X */
-	memmove(sp, &argc + 1, argc * sizeof(uintptr_t));
+// 	struct __ucontext *uc_link;
+// 	stack_t            uc_stack;
+// 	long               __spare__[8];
+// };
 
-	*--sp = 0;		/* return address */
-	ucp->uc_mcontext.mc_eip = (long)func;
-	ucp->uc_mcontext.mc_esp = (long)sp;
-}
-/* End of Apple ucontext x86 version */
-#   else
-/* Begin of Apple ucontext powerpc version */
-#       define setcontext(u) _setmcontext(&(u)->mc)
-#       define getcontext(u) _getmcontext(&(u)->mc)
-typedef struct mcontext mcontext_t;
-typedef struct ucontext ucontext_t;
-struct mcontext
-{
-	ulong pc;      /* lr */
-	ulong cr;      /* mfcr */
-	ulong ctr;     /* mfcr */
-	ulong xer;     /* mfcr */
-	ulong sp;      /* callee saved: r1 */
-	ulong toc;     /* callee saved: r2 */
-	ulong r3;      /* first arg to function, return register: r3 */
-	ulong gpr[19]; /* callee saved: r13-r31 */
-/*
-// XXX: currently do not save vector registers or floating-point state
-//	ulong   pad;
-//	uvlong  fpr[18];    / * callee saved: f14-f31 * /
-//	ulong   vr[4*12];   / * callee saved: v20-v31, 256-bits each * /
-*/
-};
+// void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
+// {
+// 	uintptr_t *sp;
 
-struct ucontext
-{
-	struct {
-		void *ss_sp;
-		uint ss_size;
-	} uc_stack;
-	sigset_t uc_sigmask;
-	mcontext_t mc;
-};
+// 	sp = (uintptr_t *)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(void *);
+// 	sp -= argc;
+// 	sp = (void*)((uintptr_t)sp - (uintptr_t)sp % 16);	/* 16-align for OS X */
+// 	memmove(sp, &argc + 1, argc * sizeof(uintptr_t));
 
-void makecontext(ucontext_t*, void(*)(void), int, ...);
-int swapcontext(ucontext_t*, ucontext_t*);
-int _getmcontext(mcontext_t*);
-void _setmcontext(mcontext_t*);
+// 	*--sp = 0;		/* return address */
+// 	ucp->uc_mcontext.mc_eip = (long)func;
+// 	ucp->uc_mcontext.mc_esp = (long)sp;
+// }
+// /* End of Apple ucontext x86 version */
+// #   else
+// /* Begin of Apple ucontext powerpc version */
+// #       define setcontext(u) _setmcontext(&(u)->mc)
+// #       define getcontext(u) _getmcontext(&(u)->mc)
+// typedef struct mcontext mcontext_t;
+// typedef struct ucontext ucontext_t;
+// struct mcontext
+// {
+// 	ulong pc;      /* lr */
+// 	ulong cr;      /* mfcr */
+// 	ulong ctr;     /* mfcr */
+// 	ulong xer;     /* mfcr */
+// 	ulong sp;      /* callee saved: r1 */
+// 	ulong toc;     /* callee saved: r2 */
+// 	ulong r3;      /* first arg to function, return register: r3 */
+// 	ulong gpr[19]; /* callee saved: r13-r31 */
+// /*
+// // XXX: currently do not save vector registers or floating-point state
+// //	ulong   pad;
+// //	uvlong  fpr[18];    / * callee saved: f14-f31 * /
+// //	ulong   vr[4*12];   / * callee saved: v20-v31, 256-bits each * /
+// */
+// };
 
-void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
-{
-	unsigned long *sp, *tos;
-	va_list arg;
+// struct ucontext
+// {
+// 	struct {
+// 		void *ss_sp;
+// 		uint ss_size;
+// 	} uc_stack;
+// 	sigset_t uc_sigmask;
+// 	mcontext_t mc;
+// };
 
-	tos = (unsigned long*)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(unsigned long);
-	sp = tos - 16;
-	ucp->mc.pc = (long)func;
-	ucp->mc.sp = (long)sp;
-	va_start(arg, argc);
-	ucp->mc.r3 = va_arg(arg, long);
-	va_end(arg);
-}
-/* End of Apple ucontext powerpc version */
-#   endif
+// void makecontext(ucontext_t*, void(*)(void), int, ...);
+// int swapcontext(ucontext_t*, ucontext_t*);
+// int _getmcontext(mcontext_t*);
+// void _setmcontext(mcontext_t*);
 
-int swapcontext(ucontext_t *oucp, ucontext_t *ucp)
-{
-	if(getcontext(oucp) == 0)
-		setcontext(ucp);
-	return 0;
-}
+// void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
+// {
+// 	unsigned long *sp, *tos;
+// 	va_list arg;
+
+// 	tos = (unsigned long*)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(unsigned long);
+// 	sp = tos - 16;
+// 	ucp->mc.pc = (long)func;
+// 	ucp->mc.sp = (long)sp;
+// 	va_start(arg, argc);
+// 	ucp->mc.r3 = va_arg(arg, long);
+// 	va_end(arg);
+// }
+// /* End of Apple ucontext powerpc version */
+// #   endif
+
+// int swapcontext(ucontext_t *oucp, ucontext_t *ucp)
+// {
+// 	if(getcontext(oucp) == 0)
+// 		setcontext(ucp);
+// 	return 0;
+// }
 
 /* End of Apple ucontext implementation */
+#else
+#   include <ucontext.h>
 #endif
-
-#include <ucontext.h>
 
 enum
 {
@@ -298,8 +302,9 @@ struct Coroutine
     char        stackBuffer[STACK_SIZE];
 };
 
-void Coroutine_Entry(Coroutine* coroutine)
+void Coroutine_Entry(unsigned int hiPart, unsigned int loPart)
 {
+    Coroutine* coroutine = (Coroutine*)(((long long)hiPart << 32) | (long long)loPart);
     assert(coroutine && "coroutine must not be mull.");
 
     /* Run the routine */
@@ -330,7 +335,13 @@ Coroutine* CoroutineCreate(CoroutineFn func, void* args)
             coroutine->callee.uc_stack.ss_size  = STACK_SIZE - sizeof(long);
             coroutine->callee.uc_stack.ss_flags = 0;
 
+        #if defined(__x86_64__)
+            unsigned int hiPart = (unsigned int)((long long)coroutine >> 32);
+            unsigned int loPart = (unsigned int)((long long)coroutine & 0xFFFFFFFF);
+            makecontext(&coroutine->callee, (void(*)())Coroutine_Entry, 2, hiPart, loPart);
+        #else
             makecontext(&coroutine->callee, (void(*)())Coroutine_Entry, 1, coroutine);
+        #endif
 
             return coroutine;
         }
