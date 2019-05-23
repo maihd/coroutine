@@ -113,11 +113,9 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
-#if defined(__APPLE__) && defined(__MACH__)
-#   define _XOPEN_SOURCE 700
-#   include <sys/ucontext.h>
-#endif
-
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#define _XOPEN_SOURCE
 #include <ucontext.h>
 
 enum
@@ -178,6 +176,7 @@ void CoroutineDestroy(Coroutine* coroutine)
 
 static int CoroutineNativeStart(Coroutine* coroutine)
 {
+    getcontext(&coroutine->caller);
     getcontext(&coroutine->callee);
 
     coroutine->callee.uc_link           = &coroutine->caller;
