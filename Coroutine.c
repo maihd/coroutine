@@ -1,3 +1,6 @@
+#define _XOPEN_SOURCE           /* Apple's ucontext                 */
+#define _CRT_SECURE_NO_WARNINGS /* Allow Windows unsafe functions   */
+
 #include "Coroutine.h"
 
 #include <stdlib.h>
@@ -121,7 +124,6 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
-#define _XOPEN_SOURCE
 #include <ucontext.h>
 
 enum
