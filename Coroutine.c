@@ -113,8 +113,14 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
+#if __GNUC__
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
+#if __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #define _XOPEN_SOURCE
 #include <ucontext.h>
 
