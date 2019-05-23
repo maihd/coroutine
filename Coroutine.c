@@ -121,7 +121,7 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 
 enum
 {
-    STACK_SIZE = 2097152 + 16384
+    STACK_SIZE = (1024 * 1024)
 };
 
 struct Coroutine
@@ -167,8 +167,8 @@ Coroutine* CoroutineCreate(CoroutineFn func, void* args)
 
             coroutine->callee.uc_link           = &coroutine->caller;
             coroutine->callee.uc_stack.ss_sp    = coroutine->stackBuffer;
-            coroutine->callee.uc_stack.ss_size  = STACK_SIZE - sizeof(long);
-            coroutine->callee.uc_stack.ss_flags = 0;
+            coroutine->callee.uc_stack.ss_size  = STACK_SIZE;
+            //coroutine->callee.uc_stack.ss_flags = 0;
 
         #if defined(__x86_64__)
             unsigned int hiPart = (unsigned int)((long long)coroutine >> 32);
