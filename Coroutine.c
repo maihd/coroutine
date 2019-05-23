@@ -118,6 +118,9 @@ int CoroutineStatus(Coroutine* coroutine)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's context version */
 #if defined(__APPLE__)
+#   pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#   pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#   define _XOPEN_SOURCE 
 #   include <sys/ucontext.h>
 #else
 #   include <ucontext.h>
