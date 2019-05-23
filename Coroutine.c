@@ -4,7 +4,7 @@
 #include <assert.h>
 
 #if defined(_WIN32) || defined(__MINGW32__) || defined(_MSC_VER)
-/* End of windows version */
+/* End of Windows Fiber version */
 #define VC_EXTRALEAN
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -114,10 +114,14 @@ int CoroutineStatus(Coroutine* coroutine)
 
     return COROUTINE_SUSPENDED;
 }
-/* End of windows version */
-#elif defined(__linux__)
-/* Begin of Linux family version */
-#include <ucontext.h>
+/* End of Windows Fiber version */
+#elif defined(__linux__) || defined(__APPLE__)
+/* Begin of Unix's context version */
+#if defined(__APPLE__)
+#   include <sys/ucontext.h>
+#else
+#   include <ucontext.h>
+#endif
 
 enum
 {
@@ -235,11 +239,7 @@ int CoroutineStatus(Coroutine* coroutine)
 
     return COROUTINE_SUSPENDED;
 }
-/* End of Linux family version */
-#elif defined(__APPLE__)
-/* Begin of Apple family version */
-#error MacOS and iOS is not supported yet
-/* End of Apple family version */
+/* End of Unix's context version */
 #else
 #error Unsupported platform
 #endif
