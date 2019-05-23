@@ -1,0 +1,6 @@
+matrix:
+  - os: linux 
+    script: make
+    
+  - os: osx
+    script: make
