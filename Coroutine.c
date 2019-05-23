@@ -4,12 +4,22 @@
 #include <assert.h>
 
 #if defined(_MSC_VER) || defined(__clang__) || defined(__MINGW32__) || defined(__CYGWIN__)
-#   define THREAD_LOCAL __declspec(thread)
+#   define THREAD_LOCAL     static __declspec(thread)
+#   define STATIC_INLINE    static __forceinline
 #elif defined(__GNUC__)
-#   define THREAD_LOCAL __thread
+#   define THREAD_LOCAL     static __thread
+#   define STATIC_INLINE    static __inline__ __attribute__((always_inline))
 #else
 #   define THREAD_LOCAL
+#   define STATIC_INLINE    static /* Let the compiler do inline */
 #endif
+
+enum 
+{
+    COFLAGS_END     = 1 << 0,
+    COFLAGS_START   = 1 << 1,
+    COFLAGS_RUNNING = 1 << 2,  
+};
 
 #if defined(_WIN32)
 /* End of Windows Fiber version */
@@ -17,11 +27,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-static THREAD_LOCAL void*      s_threadFiber;
-static THREAD_LOCAL Coroutine* s_runningCoroutine;
+THREAD_LOCAL void* s_threadFiber;
 
 struct Coroutine 
 {
+    int         flags;
+
     HANDLE      fiber;
 
     CoroutineFn func;
@@ -33,10 +44,14 @@ static void WINAPI Fiber_Entry(void* params)
     assert(params && "Internal logic error: params must be null.");
     assert(s_threadFiber && "Internal logic error: s_threadFiber must be initialized before run fiber.");
 
+    /* Run the routine */
     Coroutine* coroutine = (Coroutine*)params;
     coroutine->func(coroutine->args);
 
-    coroutine->fiber = NULL;
+    /* Mark the coroutine is end */
+    coroutine->flags |= COFLAGS_END;
+
+    /* Return to primary fiber */
     SwitchToFiber(s_threadFiber);
 }
 
@@ -55,9 +70,10 @@ Coroutine* CoroutineCreate(CoroutineFn func, void* args)
         HANDLE handle = CreateFiber(0, Fiber_Entry, coroutine);
         if (handle)
         {
+            coroutine->flags = 0;
+            coroutine->fiber = handle;
             coroutine->func  = func;
             coroutine->args  = args;
-            coroutine->fiber = handle;
             return coroutine;
         }
         else
@@ -76,58 +92,190 @@ void CoroutineDestroy(Coroutine* coroutine)
 {
     if (coroutine)
     {
+        DeleteFiber(coroutine->fiber);
         free(coroutine);
     }
 }
 
-int CoroutineResume(Coroutine* coroutine)
+STATIC_INLINE void CoroutineNativeResume(Coroutine* coroutine)
 {
-    if (coroutine && coroutine->fiber)
-    {
-        s_runningCoroutine = coroutine;
-        SwitchToFiber(coroutine->fiber);
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
+    SwitchToFiber(coroutine->fiber);
 }
 
-void CoroutineYield(void)
+STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 {
-    s_runningCoroutine = NULL;
+    (void)coroutine;
+
     SwitchToFiber(s_threadFiber);
 }
-
-Coroutine* CoroutineRunning(void)
-{
-    return s_runningCoroutine;
-}
-
-int CoroutineStatus(Coroutine* coroutine)
-{
-    if (!coroutine || !coroutine->fiber)
-    {
-        return COROUTINE_DEAD;
-    }
-
-    if (coroutine == s_runningCoroutine)
-    {
-        return COROUTINE_RUNNING;
-    }
-
-    return COROUTINE_SUSPENDED;
-}
 /* End of Windows Fiber version */
-#elif defined(__linux__) || defined(__APPLE__)
-/* Begin of Unix's context version */
+#elif defined(__linux__) 
+/* Begin of Unix's ucontext version */
 
 #if defined(__APPLE__)
-#   pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#   pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#   define _XOPEN_SOURCE 
+/* Begin of Apple ucontext implementation */
+#   include <stdarg.h>
+#   include <errno.h>
+#   include <stdlib.h>
+#   include <unistd.h>
+#   include <string.h>
+#   include <assert.h>
+#   include <time.h>
+#   include <sys/time.h>
+#   include <sys/types.h>
+#   include <sys/wait.h>
+#   include <sched.h>
+#   include <signal.h>
+#   include <sys/utsname.h>
+#   include <inttypes.h>
 #   include <sys/ucontext.h>
+#	define mcontext libthread_mcontext
+#	define mcontext_t libthread_mcontext_t
+#	define ucontext libthread_ucontext
+#	define ucontext_t libthread_ucontext_t
+
+#	if defined(__i386__)
+/* Begin of Apple ucontext x86 version */
+#       define setcontext(u) setmcontext(&(u)->uc_mcontext)
+#       define getcontext(u) getmcontext(&(u)->uc_mcontext)
+typedef struct mcontext mcontext_t;
+typedef struct ucontext ucontext_t;
+
+typedef void (MakeContextCallback)(void);
+
+/*extern*/ int swapcontext(ucontext_t *, ucontext_t *);
+//  /*extern*/ void makecontext(ucontext_t*, void(*)(), int, ...);
+/*extern*/ void makecontext(ucontext_t *, MakeContextCallback *, int, ...);
+/*extern*/ int  getmcontext(mcontext_t *);
+/*extern*/ void setmcontext(mcontext_t *);
+
+/* #include <machine/ucontext.h> */
+
+struct mcontext {
+	/*
+	 * The first 20 fields must match the definition of
+	 * sigcontext. So that we can support sigcontext
+	 * and ucontext_t at the same time.
+	 */
+	long mc_onstack; /* XXX - sigcontext compat. */
+	long mc_gs;
+	long mc_fs;
+	long mc_es;
+	long mc_ds;
+	long mc_edi;
+	long mc_esi;
+	long mc_ebp;
+	long mc_isp;
+	long mc_ebx;
+	long mc_edx;
+	long mc_ecx;
+	long mc_eax;
+	long mc_trapno;
+	long mc_err;
+	long mc_eip;
+	long mc_cs;
+	long mc_eflags;
+	long mc_esp; /* machine state */
+	long mc_ss;
+
+	long mc_fpregs[28]; /* env87 + fpacc87 + u_long */
+	long __spare__[17];
+};
+
+struct ucontext {
+	/*
+	 * Keep the order of the first two fields. Also,
+	 * keep them the first two fields in the structure.
+	 * This way we can have a union with struct
+	 * sigcontext and ucontext_t. This allows us to
+	 * support them both at the same time.
+	 * note: the union is not defined, though.
+	 */
+	sigset_t    uc_sigmask;
+	mcontext_t  uc_mcontext;
+
+	struct __ucontext *uc_link;
+	stack_t            uc_stack;
+	long               __spare__[8];
+};
+
+void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
+{
+	uintptr_t *sp;
+
+	sp = (uintptr_t *)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(void *);
+	sp -= argc;
+	sp = (void*)((uintptr_t)sp - (uintptr_t)sp % 16);	/* 16-align for OS X */
+	memmove(sp, &argc + 1, argc * sizeof(uintptr_t));
+
+	*--sp = 0;		/* return address */
+	ucp->uc_mcontext.mc_eip = (long)func;
+	ucp->uc_mcontext.mc_esp = (long)sp;
+}
+/* End of Apple ucontext x86 version */
+#   else
+/* Begin of Apple ucontext powerpc version */
+#       define setcontext(u) _setmcontext(&(u)->mc)
+#       define getcontext(u) _getmcontext(&(u)->mc)
+typedef struct mcontext mcontext_t;
+typedef struct ucontext ucontext_t;
+struct mcontext
+{
+	ulong pc;      /* lr */
+	ulong cr;      /* mfcr */
+	ulong ctr;     /* mfcr */
+	ulong xer;     /* mfcr */
+	ulong sp;      /* callee saved: r1 */
+	ulong toc;     /* callee saved: r2 */
+	ulong r3;      /* first arg to function, return register: r3 */
+	ulong gpr[19]; /* callee saved: r13-r31 */
+/*
+// XXX: currently do not save vector registers or floating-point state
+//	ulong   pad;
+//	uvlong  fpr[18];    / * callee saved: f14-f31 * /
+//	ulong   vr[4*12];   / * callee saved: v20-v31, 256-bits each * /
+*/
+};
+
+struct ucontext
+{
+	struct {
+		void *ss_sp;
+		uint ss_size;
+	} uc_stack;
+	sigset_t uc_sigmask;
+	mcontext_t mc;
+};
+
+void makecontext(ucontext_t*, void(*)(void), int, ...);
+int swapcontext(ucontext_t*, ucontext_t*);
+int _getmcontext(mcontext_t*);
+void _setmcontext(mcontext_t*);
+
+void makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
+{
+	unsigned long *sp, *tos;
+	va_list arg;
+
+	tos = (unsigned long*)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / sizeof(unsigned long);
+	sp = tos - 16;
+	ucp->mc.pc = (long)func;
+	ucp->mc.sp = (long)sp;
+	va_start(arg, argc);
+	ucp->mc.r3 = va_arg(arg, long);
+	va_end(arg);
+}
+/* End of Apple ucontext powerpc version */
+#   endif
+
+int swapcontext(ucontext_t *oucp, ucontext_t *ucp)
+{
+	if(getcontext(oucp) == 0)
+		setcontext(ucp);
+	return 0;
+}
+
+/* End of Apple ucontext implementation */
 #endif
 
 #include <ucontext.h>
@@ -135,12 +283,6 @@ int CoroutineStatus(Coroutine* coroutine)
 enum
 {
     STACK_SIZE = 2097152 + 16384
-};
-
-enum 
-{
-    COFLAGS_END     = 1 << 0,
-    COFLAGS_RUNNING = 1 << 1,  
 };
 
 struct Coroutine
@@ -156,28 +298,18 @@ struct Coroutine
     char        stackBuffer[STACK_SIZE];
 };
 
-static THREAD_LOCAL Coroutine* s_runningCoroutine;
-
 void Coroutine_Entry(Coroutine* coroutine)
 {
     assert(coroutine && "coroutine must not be mull.");
 
+    /* Run the routine */
     coroutine->func(coroutine->args);
 
-    /* */
+    /* Mark the coroutine is end */
     coroutine->flags |= COFLAGS_END;
 
-    /* Switch back to thread */
+    /* Return to primary fiber */
     swapcontext(&coroutine->callee, &coroutine->caller);
-}
-
-void CoroutineYield(void)
-{
-    if (s_runningCoroutine && (s_runningCoroutine->flags & COFLAGS_RUNNING) != 0)
-    {
-        s_runningCoroutine->flags &= ~(COFLAGS_RUNNING);
-        swapcontext(&s_runningCoroutine->callee, &s_runningCoroutine->caller);
-    }
 }
 
 Coroutine* CoroutineCreate(CoroutineFn func, void* args)
@@ -212,20 +344,47 @@ void CoroutineDestroy(Coroutine* coroutine)
     free(coroutine);
 }
 
+STATIC_INLINE void CoroutineNativeResume(Coroutine* coroutine)
+{
+    swapcontext(&coroutine->caller, &coroutine->callee);
+}
+
+STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
+{
+    swapcontext(&coroutine->callee, &coroutine->caller);
+}
+/* End of Unix's ucontext version */
+#else
+#error Unsupport version
+#endif
+
+/* Running coroutine, NULL mean current is primary coroutine */
+THREAD_LOCAL Coroutine* s_runningCoroutine;
+
 int CoroutineResume(Coroutine* coroutine)
 {
-    if (coroutine && !(coroutine->flags & COFLAGS_END))
+    if (CoroutineStatus(coroutine) == COROUTINE_SUSPENDED)
     {
         s_runningCoroutine = coroutine;
-
         coroutine->flags |= COFLAGS_RUNNING;
-        swapcontext(&coroutine->caller, &coroutine->callee);
-
+        CoroutineNativeResume(coroutine);
         return 1;
     }
     else
     {
         return 0;
+    }
+}
+
+void CoroutineYield(void)
+{
+    if (s_runningCoroutine && (s_runningCoroutine->flags & COFLAGS_RUNNING) != 0)
+    {
+        Coroutine* coroutine = s_runningCoroutine;
+        s_runningCoroutine = NULL;
+
+        coroutine->flags &= ~(COFLAGS_RUNNING);
+        CoroutineNativeYield(coroutine);
     }
 }
 
@@ -248,8 +407,3 @@ int CoroutineStatus(Coroutine* coroutine)
 
     return COROUTINE_SUSPENDED;
 }
-/* End of Unix's context version */
-#else
-#error Unsupported platform
-#endif
-
