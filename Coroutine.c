@@ -122,7 +122,7 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 
 enum
 {
-    STACK_SIZE = (1024 * 1024)
+    STACK_SIZE = 1 << 18 // 256 KB
 };
 
 struct Coroutine
