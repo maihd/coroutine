@@ -116,9 +116,9 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 #if defined(__APPLE__) && defined(__MACH__)
 #   define _XOPEN_SOURCE 700
 #   include <sys/ucontext.h>
-#else
-#   include <ucontext.h>
 #endif
+
+#include <ucontext.h>
 
 enum
 {
