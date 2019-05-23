@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__MINGW32__) || defined(_MSC_VER)
 /* End of windows version */
 #define VC_EXTRALEAN
 #define WIN32_LEAN_AND_MEAN
@@ -115,8 +115,8 @@ int CoroutineStatus(Coroutine* coroutine)
     return COROUTINE_SUSPENDED;
 }
 /* End of windows version */
-#else
-/* Begin of Unix family version */
+#elif defined(__linux__)
+/* Begin of Linux family version */
 #include <ucontext.h>
 
 enum
@@ -235,4 +235,11 @@ int CoroutineStatus(Coroutine* coroutine)
 
     return COROUTINE_SUSPENDED;
 }
+/* End of Linux family version */
+#elif defined(__APPLE__)
+/* Begin of Apple family version */
+#error MacOS and iOS is not supported yet
+/* End of Apple family version */
+#else
+#error Unsupported platform
 #endif

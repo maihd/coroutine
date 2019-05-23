@@ -1,6 +1,14 @@
+ifeq ($(OS),Windows_NT)
+CC=clang
+RM=del /Q
+else
+CC=gcc
+RM=rm -f
+endif
+
 test:
 	@echo Compile test program 
-	@gcc -o a Coroutine_Test.c Coroutine.c
+	@$(CC) -o a Coroutine_Test.c Coroutine.c
 
 	@echo
 	@echo Execute test program
@@ -9,4 +17,4 @@ test:
 
 	@echo
 	@echo Remove test program
-	@rm a
+	@$(RM) a
