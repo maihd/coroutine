@@ -1,6 +1,13 @@
 matrix:
-  - os: linux 
-    script: make
-    
-  - os: osx
-    script: make
+  include:
+    - os: linux 
+      language: c
+      compiler: gcc
+      script: make
+      
+    - os: osx
+      language: c
+      compiler:
+        - gcc
+        - clang
+      script: make
