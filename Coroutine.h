@@ -19,7 +19,7 @@ extern "C" {
 enum
 {
     COROUTINE_DEAD,
-    //COROUTINE_NORMAL,
+    COROUTINE_NORMAL,
     COROUTINE_RUNNING,
     COROUTINE_SUSPENDED,
 };
@@ -39,10 +39,10 @@ COROUTINE_API Coroutine*    CoroutineCreate(CoroutineFn func, void* args);
  */
 COROUTINE_API void          CoroutineDestroy(Coroutine* coroutine);
 
-// *      - COROUTINE_NORMAL: the coroutine is active but not running (that is, it has resumed another coroutine).
 /**
  *  Returns the status of coroutine.
  *      - COROUTINE_DEAD: the coroutine has finished its body function, or if it has stopped with an error. 
+ *      - COROUTINE_NORMAL: the coroutine is active but not running (that is, it has resumed another coroutine).
  *      - COROUTINE_RUNNING: the coroutine is running (that is, it is CoroutineRunning()).
  *      - COROUTINE_SUSPENDED: the coroutine is suspended in a call to CoroutineYield, or it has not started running yet.
  */
