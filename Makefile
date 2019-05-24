@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra
+CFLAGS=-Wall -Wextra -O0
 
 ifeq ($(OS),Windows_NT)
 CC=clang
