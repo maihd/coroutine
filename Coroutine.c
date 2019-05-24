@@ -261,7 +261,8 @@ STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
-#include <signal.h>
+#include <setjmp.h>
+#include <unistd.h>
 #include <ucontext.h>
 
 #if !defined(_WIN32) || defined(_X86_)
@@ -270,7 +271,6 @@ STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
 #define DUMMYARGS long long _0, long long _1, long long _2, long long _3, 
 #endif
 
-#include <setjmp.h>
 
 #define STORE_CALLER_CONTEXT 0
 
