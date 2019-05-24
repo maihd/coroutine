@@ -5,10 +5,12 @@
 #define _CRT_SECURE_NO_WARNINGS /* Allow Windows unsafe functions   */
 
 #if __GNUC__
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 #if __clang__
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
@@ -123,12 +125,151 @@ STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
 
     SwitchToFiber(s_threadFiber);
 }
+
+#if 0
+#if defined(_X86_)
+#define CONTEXT_AMD64               0x00100000L
+#define CONTEXT_CONTROL             (CONTEXT_AMD64 | 0x00000001L)
+#define CONTEXT_INTEGER             (CONTEXT_AMD64 | 0x00000002L)
+#define CONTEXT_SEGMENTS            (CONTEXT_AMD64 | 0x00000004L)
+#define CONTEXT_FLOATING_POINT      (CONTEXT_AMD64 | 0x00000008L)
+#define CONTEXT_DEBUG_REGISTERS     (CONTEXT_AMD64 | 0x00000010L)
+
+#define CONTEXT_FULL                (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+
+#define CONTEXT_ALL                 (CONTEXT_CONTROL | CONTEXT_INTEGER | \
+                                     CONTEXT_SEGMENTS | CONTEXT_FLOATING_POINT | \
+                                     CONTEXT_DEBUG_REGISTERS)
+
+#define CONTEXT_XSTATE              (CONTEXT_AMD64 | 0x00000040L)
+
+#define CONTEXT_EXCEPTION_ACTIVE    0x08000000L
+#define CONTEXT_SERVICE_ACTIVE      0x10000000L
+#define CONTEXT_EXCEPTION_REQUEST   0x40000000L
+#define CONTEXT_EXCEPTION_REPORTING 0x80000000L
+#endif
+
+typedef struct __stack 
+{
+	void*   ss_sp;
+	size_t  ss_size;
+	int     ss_flags;
+} stack_t;
+
+typedef CONTEXT         mcontext_t;
+typedef unsigned long   __sigset_t;
+
+typedef struct __ucontext 
+{
+	unsigned long int	uc_flags;
+	struct __ucontext*  uc_link;
+	stack_t				uc_stack;
+	mcontext_t			uc_mcontext; 
+	__sigset_t			uc_sigmask;
+} ucontext_t;
+
+STATIC_INLINE int getcontext(ucontext_t*ucp);
+STATIC_INLINE int setcontext(const ucontext_t *ucp);
+STATIC_INLINE int makecontext(ucontext_t*, void (*)(), int, ...);
+STATIC_INLINE int swapcontext(ucontext_t*, const ucontext_t *);
+
+STATIC_INLINE int getcontext(ucontext_t *ucp)
+{
+	int ret;
+
+	/* Retrieve the full machine context */
+    ucp->uc_mcontext.ContextFlags = CONTEXT_FULL;
+	ret = GetThreadContext(GetCurrentThread(), &ucp->uc_mcontext);
+
+	return (ret == 0) ? -1 : 0;
+}
+
+STATIC_INLINE int setcontext(const ucontext_t *ucp)
+{
+	int ret;
+	
+	/* Restore the full machine context (already set) */
+	ret = SetThreadContext(GetCurrentThread(), &ucp->uc_mcontext);
+	return (ret == 0) ? -1 : 0;
+}
+
+STATIC_INLINE int makecontext(ucontext_t* ucp, void (*func)(), int argc, ...)
+{
+    /* Stack pointer */
+	char* sp;
+
+	/* Stack grows down */
+	sp = (char*)(size_t)ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size;	
+
+	/* Reserve stack space for the arguments (maximum possible: argc * (sizeof(DWORD64) bytes per argument)) */
+	sp -= argc * sizeof(DWORD64);
+
+	if (sp < (char*)ucp->uc_stack.ss_sp) 
+    {
+		/* errno = ENOMEM;*/
+		return -1;
+	}
+
+	/* Set the instruction and the stack pointer */
+#if defined(_X86_)
+	ucp->uc_mcontext.Eip = (DWORD32)func;
+	ucp->uc_mcontext.Esp = (DWORD32)(sp - 4);
+#else
+	ucp->uc_mcontext.Rip = (DWORD64)func;
+	ucp->uc_mcontext.Rsp = (DWORD64)(sp - 40);
+#endif
+	/* Save/Restore the full machine context */
+	ucp->uc_mcontext.ContextFlags = CONTEXT_FULL;
+
+	/* Copy the arguments */
+    va_list  src;
+    DWORD64* dst;
+
+    dst = (DWORD64*)(sp);
+	va_start(src, argc);
+	//for (int i = argc - 1; i > -1; i--)
+    for (int i = 0; i < argc; i++)
+    {
+        DWORD64  v = va_arg(src, DWORD64);
+        dst[i] = v;
+	}
+	va_end(src);
+
+	return 0;
+}
+
+STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
+{
+	int ret;
+
+	if ((oucp == NULL) || (ucp == NULL)) {
+		/*errno = EINVAL;*/
+		return -1;
+	}
+
+	ret = getcontext(oucp);
+	if (ret == 0) {
+		ret = setcontext(ucp);
+	}
+	return ret;
+}
+
+#define _longjmp longjmp
+#endif
+
 /* End of Windows Fiber version */
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
-#include <setjmp.h>
 #include <ucontext.h>
+
+#if !defined(_WIN32) || defined(_X86_)
+#define DUMMYARGS
+#else
+#define DUMMYARGS long long _0, long long _1, long long _2, long long _3, 
+#endif
+
+#include <setjmp.h>
 
 #define STORE_CALLER_CONTEXT 0
 
@@ -171,7 +312,7 @@ typedef struct CoroutineRunner
 THREAD_LOCAL jmp_buf s_threadJmpPoint;
 #endif
 
-static void Coroutine_Entry(unsigned int hiPart, unsigned int loPart)
+static void Coroutine_Entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
 {
 #if !STORE_CALLER_CONTEXT
     CoroutineRunner* runner = (CoroutineRunner*)(((long long)hiPart << 32) | (long long)loPart);

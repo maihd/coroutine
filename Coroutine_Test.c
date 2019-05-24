@@ -18,7 +18,7 @@ static long long clock(void)
 void CoPrint(void* args)
 {
     (void)args;
-    int length = 1000 * 1000 * 1000;
+    int length = 10 * 1000 * 1000;
     int calcul = 0;
 
     while (length--)
