@@ -261,7 +261,7 @@ STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
-#include <sys/ucontext.h>
+#include <signal.h>
 #include <ucontext.h>
 
 #if !defined(_WIN32) || defined(_X86_)
