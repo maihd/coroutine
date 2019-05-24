@@ -261,6 +261,19 @@ STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
+#ifndef __stack_t_defined
+#define __stack_t_defined 1
+#define __need_size_t
+#include <stddef.h>
+/* Structure describing a signal stack.  */
+typedef struct
+{
+void*   ss_sp;
+int     ss_flags;
+size_t  ss_size;
+} stack_t;
+#endif
+
 #include <setjmp.h>
 #include <unistd.h>
 #include <ucontext.h>
