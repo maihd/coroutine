@@ -25,11 +25,11 @@ void CoPrint(void* args)
     {
         calcul++;
         //printf("First print.\n");
-        //CoroutineYield();
+        CoroutineYield();
         
         calcul++;
         //printf("Second print.\n");
-        //CoroutineYield();
+        CoroutineYield();
 
         //printf("Done.\n");
         calcul++;

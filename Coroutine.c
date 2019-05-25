@@ -48,7 +48,10 @@ struct Coroutine
     void*       args;
 };
 
-static void WINAPI Coroutine_Entry(void* params)
+/* Coroutine Fiber callback
+ * @note: __stdcall insteadof CALLBACK because my compiler mark WINAPI is undefined 
+ */
+static void __stdcall Coroutine_Entry(void* params)
 {
     assert(params && "Internal logic error: params must be null.");
     assert(s_threadFiber && "Internal logic error: s_threadFiber must be initialized before run fiber.");
