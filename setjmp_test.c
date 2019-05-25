@@ -8,9 +8,9 @@ enum
 
 typedef struct Coroutine
 {
-    int     status;
-    jmp_buf callee;
-    jmp_buf caller;
+    int      status;
+    jmp_buf* caller;
+    jmp_buf  callee;
 } Coroutine;
 
 typedef void (*CoFunc)(void*);
@@ -33,7 +33,7 @@ static long long clock(void)
 #include <time.h>
 #endif
 
-Coroutine coroutine;
+static Coroutine coroutine;
 
 void CoPrint(void* args)
 {
@@ -89,7 +89,8 @@ void CoYield(Coroutine* c)
 {
     if (!setjmp(c->callee)) 
     {
-        longjmp(c->caller, 1);
+        printf("Yield coroutine.\n");
+        longjmp(*c->caller, 1);
     }
 }
 
@@ -97,8 +98,11 @@ int CoResume(Coroutine* c)
 {
     if (Coroutine_Done == c->status) return Coroutine_Done;
 
-    if (!setjmp(c->caller))
+    jmp_buf tmp;
+    c->caller = &tmp;
+    if (!setjmp(*c->caller))
     {
+        printf("Resume coroutine.\n");
         c->status = Coroutine_Working;
         longjmp(c->callee, 1);
     }
@@ -108,6 +112,9 @@ int CoResume(Coroutine* c)
     }
 }
 
+#define NATIVE_STACK_ASM 0
+
+#if NATIVE_STACK_ASM
 typedef struct {
   Coroutine*    c;
   CoFunc        f;
@@ -212,3 +219,21 @@ void CoStart(Coroutine* c, CoFunc f, void* arg, void* sp)
     (*p->f)(p->arg);
     longjmp(p->c->caller, Coroutine_Done);
 }
+#else
+void CoStart(Coroutine* c, CoFunc f, void* arg, void* sp)
+{
+    (void)sp;
+
+    jmp_buf tmp;
+    c->caller = &tmp;
+    if (!setjmp(*c->caller))
+    {
+        char space[1000];   /* Reserve enough space for main to run     */
+        space[999] = 1;     /* Do not optimize array out of existence   */
+
+        printf("Start coroutine.\n");
+        c->status = Coroutine_Working;
+        f(arg);
+    }
+}
+#endif
