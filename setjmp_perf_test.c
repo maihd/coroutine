@@ -1,7 +1,7 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <setjmp.h>
 
-#include "Coroutine.h"
+jmp_buf mainTask, childTask;
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -15,37 +15,57 @@ static long long clock(void)
 #include <time.h>
 #endif
 
-void CoPrint(void* args)
+static int done;
+
+void resume(void)
 {
-    (void)args;
-    int length = 10 * 1000 * 1000;
-    int calcul = 0;
-
-    while (length--)
+    if (!setjmp(mainTask))
     {
-        calcul++;
-        //printf("First print.\n");
-        //CoroutineYield();
-        
-        calcul++;
-        //printf("Second print.\n");
-        //CoroutineYield();
-
-        //printf("Done.\n");
-        calcul++;
+        longjmp(childTask, 1);
     }
 }
 
-int main(void)
+void yield(void)
 {
-    // Create new coroutine with CoPrint and no args
-    Coroutine* coroutine = CoroutineCreate(CoPrint, NULL);
+    if (!setjmp(childTask))
+    {
+        longjmp(mainTask, 1);
+    }
+}
+
+void child(void)
+{
+    yield();
+
+    int length = 1000 * 1000;
+    int calcul = 0; 
+    
+    while (length-- >= 0)
+    {
+        printf("Length: %d\n", length);
+        calcul++;    
+        calcul++;
+        calcul++;
+    }
+
+    done = 1;
+    yield();
+}
+
+int main()
+{
+    if (!setjmp(mainTask))
+    {
+        child();
+    }
 
     clock_t ticks = clock();
-    // Run coroutine until end
-    while (CoroutineResume(coroutine));
+    while (!done)
+    {
+        resume();
+    }
 
-#ifdef _WIN32
+    #ifdef _WIN32
     LARGE_INTEGER frequency;
     QueryPerformanceFrequency(&frequency);
 
@@ -57,9 +77,5 @@ int main(void)
     printf("===============================================================\n");
     printf("=> Total time: %lfs\n", (double)(clock() - ticks) * clock2second);
 
-    // Destroy coroutine
-    CoroutineDestroy(coroutine);
-
     return 0;
 }
-
