@@ -7,7 +7,7 @@ CFLAGS+=-D_WIN32
 endif
 
 test:
-	@echo Testing system native version (Standard C only)
+	@echo "Testing system native version (Standard C only)"
 
 	@echo Compile test program 
 	@$(CC) -o a.exe Coroutine_Test.c Coroutine.c $(CFLAGS)

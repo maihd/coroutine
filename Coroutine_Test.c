@@ -39,7 +39,12 @@ void CoPrint(void* args)
 int main(void)
 {
     // Create new coroutine with CoPrint and no args
-    Coroutine* coroutine = CoroutineCreate(CoPrint, NULL);
+    Coroutine* coroutine = CoroutineCreate(0, CoPrint, NULL);
+    if (!coroutine)
+    {
+        fprintf(stderr, "Create coroutine failed!\n");
+        return 1;
+    }
 
     clock_t ticks = clock();
     // Run coroutine until end

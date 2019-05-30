@@ -41,6 +41,7 @@ THREAD_LOCAL void* s_threadFiber;
 struct Coroutine 
 {
     int         status;
+    int         stackSize;
 
     HANDLE      fiber;
 
@@ -67,23 +68,23 @@ static void __stdcall Coroutine_Entry(void* params)
     SwitchToFiber(s_threadFiber);
 }
 
-Coroutine* CoroutineCreate(CoroutineFn func, void* args)
+Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
 {
     if (func)
     {
         Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine));
         if (coroutine)
         {
-            coroutine->status = COROUTINE_NORMAL;
-            coroutine->func   = func;
-            coroutine->args   = args;
+            coroutine->status    = COROUTINE_NORMAL;
+            coroutine->stackSize = stackSize <= 0 ? COROUTINE_STACK_SIZE : stackSize;
+            coroutine->func      = func;
+            coroutine->args      = args;
+
+            return coroutine;
         }
-        return coroutine;
     }
-    else
-    {
-        return NULL;
-    }
+
+    return NULL;
 }
 
 void CoroutineDestroy(Coroutine* coroutine)
@@ -95,7 +96,7 @@ void CoroutineDestroy(Coroutine* coroutine)
     }
 }
 
-STATIC_INLINE int CoroutineNativeStart(Coroutine* coroutine)
+STATIC_INLINE bool CoroutineNativeStart(Coroutine* coroutine)
 {
     if (!s_threadFiber)
     {
@@ -103,23 +104,23 @@ STATIC_INLINE int CoroutineNativeStart(Coroutine* coroutine)
         assert(s_threadFiber != NULL && "Internal system error: OS cannot convert current thread to fiber.");
     }
 
-    HANDLE handle = CreateFiber(0, Coroutine_Entry, coroutine);
+    HANDLE handle = CreateFiber((SIZE_T)coroutine->stackSize, Coroutine_Entry, coroutine);
     if (handle)
     {
         coroutine->fiber = handle;
         SwitchToFiber(handle);
-        return 1;
+        return true;
     }
     else
     {
-        return 0;
+        return false;
     }
 }
 
-STATIC_INLINE int CoroutineNativeResume(Coroutine* coroutine)
+STATIC_INLINE bool CoroutineNativeResume(Coroutine* coroutine)
 {
     SwitchToFiber(coroutine->fiber);
-    return 1;
+    return true;
 }
 
 STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
@@ -292,15 +293,6 @@ typedef struct
 
 #define STORE_CALLER_CONTEXT 0
 
-enum
-{
-#if defined(__APPLE__)
-    STACK_SIZE = 32 * 1024 // 32 KB
-#else
-    STACK_SIZE = 2 * 1024 // 2 KB
-#endif
-};
-
 struct Coroutine
 {
     int         status;
@@ -316,7 +308,8 @@ struct Coroutine
     jmp_buf     jmpPoint;
 #endif
 
-    char        stack[STACK_SIZE];
+    int         stackSize;
+    char        stack[];
 };
 
 #if !STORE_CALLER_CONTEXT
@@ -368,22 +361,24 @@ static void Coroutine_Entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
 #endif
 }
 
-Coroutine* CoroutineCreate(CoroutineFn func, void* args)
+Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
 {
     if (func)
     {
-        Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine));
+        stackSize = stackSize <= 0 ? COROUTINE_STACK_SIZE : stackSize;
+        Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine) + stackSize);
         if (coroutine)
         {
-            coroutine->status = COROUTINE_NORMAL;
-            coroutine->func   = func;
-            coroutine->args   = args;
+            coroutine->status       = COROUTINE_NORMAL;
+            coroutine->func         = func;
+            coroutine->args         = args;
+            coroutine->stackSize    = stackSize;
 
 #if !STORE_CALLER_CONTEXT
             getcontext(&coroutine->context);
 
             coroutine->context.uc_stack.ss_sp    = coroutine->stack;
-            coroutine->context.uc_stack.ss_size  = sizeof(coroutine->stack);
+            coroutine->context.uc_stack.ss_size  = coroutine->stackSize;
 
             ucontext_t tmp;
             CoroutineRunner runner = { coroutine, &tmp, &coroutine->jmpPoint};
@@ -413,7 +408,7 @@ static int CoroutineNativeStart(Coroutine* coroutine)
 
     coroutine->callee.uc_link           = &coroutine->caller;
     coroutine->callee.uc_stack.ss_sp    = coroutine->stack;
-    coroutine->callee.uc_stack.ss_size  = sizeof(coroutine->stack);
+    coroutine->callee.uc_stack.ss_size  = coroutine->stackSize;
     coroutine->callee.uc_stack.ss_flags = 0;
 
     unsigned int hiPart = (unsigned int)((long long)coroutine >> 32);
@@ -465,7 +460,7 @@ static void CoroutineNativeYield(Coroutine* coroutine)
 /* Running coroutine, NULL mean current is primary coroutine */
 THREAD_LOCAL Coroutine* s_runningCoroutine;
 
-int CoroutineResume(Coroutine* coroutine)
+bool CoroutineResume(Coroutine* coroutine)
 {
     switch (CoroutineStatus(coroutine))
     {
@@ -482,7 +477,7 @@ int CoroutineResume(Coroutine* coroutine)
         return CoroutineNativeResume(coroutine);
 
     default:
-        return 0;
+        return false;
     }
 }
 

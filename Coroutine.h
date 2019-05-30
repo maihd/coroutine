@@ -12,8 +12,14 @@
 #define COROUTINE_API
 #endif
 
-#if __cplusplus
+#ifdef __cplusplus
 extern "C" {
+#elif !defined(__bool_true_and_false_defined)
+typedef int bool;
+enum
+{
+    true = 1, false = 0
+};
 #endif
 
 enum
@@ -24,15 +30,28 @@ enum
     COROUTINE_SUSPENDED,
 };
 
+enum
+{
+    /* Recommended stack size */
+    COROUTINE_STACK_SIZE =
+#if defined(_WIN32)
+    1024 * 1024 /* 1 MB */
+#elif defined(__APPLE__)
+    32 * 1024 /* 32 KB   */
+#else
+    2 * 1024  /* 2 KB    */
+#endif
+};
+
 typedef void(*CoroutineFn)(void* args);
 
 typedef struct Coroutine Coroutine;
 
 /**
  * Creates a new coroutine, with body func and args.
- * Return NULL if func is not valid or creation failed.
+ * Return false if func is not valid or creation failed.
  */
-COROUTINE_API Coroutine*    CoroutineCreate(CoroutineFn func, void* args);
+COROUTINE_API Coroutine*    CoroutineCreate(int stackSize, CoroutineFn func, void* args);
 
 /**
  * Release coroutine memory usage
@@ -62,9 +81,9 @@ COROUTINE_API void          CoroutineYield(void);
  * Starts or continues the execution of coroutine.
  * Return 1 if resume success, 0 is otherwise.
  */
-COROUTINE_API int           CoroutineResume(Coroutine* coroutine);
+COROUTINE_API bool          CoroutineResume(Coroutine* coroutine);
 
-#if __cplusplus
+#ifdef __cplusplus
 }
 #endif
 
