@@ -25,11 +25,11 @@ void CoPrint(void* args)
     {
         calcul++;
         //printf("First print.\n");
-        CoroutineYield();
+        Coroutine_yield();
         
         calcul++;
         //printf("Second print.\n");
-        CoroutineYield();
+        Coroutine_yield();
 
         //printf("Done.\n");
         calcul++;
@@ -38,8 +38,10 @@ void CoPrint(void* args)
 
 int main(void)
 {
+    printf("Start running a coroutine with long time progression\n");
+
     // Create new coroutine with CoPrint and no args
-    Coroutine* coroutine = CoroutineCreate(0, CoPrint, NULL);
+    Coroutine* coroutine = Coroutine_create(0, CoPrint, NULL);
     if (!coroutine)
     {
         fprintf(stderr, "Create coroutine failed!\n");
@@ -48,7 +50,7 @@ int main(void)
 
     clock_t ticks = clock();
     // Run coroutine until end
-    while (CoroutineResume(coroutine));
+    while (Coroutine_resume(coroutine));
 
 #ifdef _WIN32
     LARGE_INTEGER frequency;
@@ -63,8 +65,9 @@ int main(void)
     printf("=> Total time: %lfs\n", (double)(clock() - ticks) * clock2second);
 
     // Destroy coroutine
-    CoroutineDestroy(coroutine);
+    Coroutine_destroy(coroutine);
 
+    printf("Progression done.\n");
     return 0;
 }
 

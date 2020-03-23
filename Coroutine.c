@@ -1,7 +1,7 @@
 #undef  _FORTIFY_SOURCE          /* No standard library checking     */
 #define _FORTIFY_SOURCE 0
 
-#define _XOPEN_SOURCE           /* Apple's ucontext                 */
+#define _XOPEN_SOURCE           /* Allow Apple's ucontext           */
 #define _CRT_SECURE_NO_WARNINGS /* Allow Windows unsafe functions   */
 
 #if __GNUC__
@@ -25,8 +25,11 @@
 #elif defined(__GNUC__) || defined(__clang__)
 #   define THREAD_LOCAL     static __thread
 #   define STATIC_INLINE    static __inline__ __attribute__((always_inline))
+#elif defined(__cplusplus)
+#   define THREAD_LOCAL     thread_local
+#   define STATIC_INLINE    inline
 #else
-#   define THREAD_LOCAL
+#   define THREAD_LOCAL     static
 #   define STATIC_INLINE    static /* Let the compiler do inline */
 #endif
 
@@ -52,7 +55,7 @@ struct Coroutine
 /* Coroutine Fiber callback
  * @note: __stdcall insteadof CALLBACK because my compiler mark WINAPI is undefined 
  */
-static void __stdcall Coroutine_Entry(void* params)
+static void __stdcall Coroutine_entry(void* params)
 {
     assert(params && "Internal logic error: params must be null.");
     assert(s_threadFiber && "Internal logic error: s_threadFiber must be initialized before run fiber.");
@@ -62,21 +65,22 @@ static void __stdcall Coroutine_Entry(void* params)
     coroutine->func(coroutine->args);
 
     /* Mark the coroutine is end */
-    coroutine->status = COROUTINE_DEAD;
+    coroutine->status = CoroutineStatus_Dead;
 
     /* Return to primary fiber */
     SwitchToFiber(s_threadFiber);
 }
 
-Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
+Coroutine* Coroutine_create(int stackSize, CoroutineFn func, void* args)
 {
     if (func)
     {
-        Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine));
+        int validStackSize = stackSize <= 0 ? COROUTINE_STACK_SIZE : stackSize;
+        Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine) + validStackSize);
         if (coroutine)
         {
-            coroutine->status    = COROUTINE_NORMAL;
-            coroutine->stackSize = stackSize <= 0 ? COROUTINE_STACK_SIZE : stackSize;
+            coroutine->status    = CoroutineStatus_Normal;
+            coroutine->stackSize = validStackSize;
             coroutine->func      = func;
             coroutine->args      = args;
 
@@ -87,7 +91,7 @@ Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
     return NULL;
 }
 
-void CoroutineDestroy(Coroutine* coroutine)
+void Coroutine_destroy(Coroutine* coroutine)
 {
     if (coroutine)
     {
@@ -96,7 +100,7 @@ void CoroutineDestroy(Coroutine* coroutine)
     }
 }
 
-STATIC_INLINE bool CoroutineNativeStart(Coroutine* coroutine)
+STATIC_INLINE bool Coroutine_nativeStart(Coroutine* coroutine)
 {
     if (!s_threadFiber)
     {
@@ -104,7 +108,7 @@ STATIC_INLINE bool CoroutineNativeStart(Coroutine* coroutine)
         assert(s_threadFiber != NULL && "Internal system error: OS cannot convert current thread to fiber.");
     }
 
-    HANDLE handle = CreateFiber((SIZE_T)coroutine->stackSize, Coroutine_Entry, coroutine);
+    HANDLE handle = CreateFiber((SIZE_T)coroutine->stackSize, Coroutine_entry, coroutine);
     if (handle)
     {
         coroutine->fiber = handle;
@@ -117,13 +121,13 @@ STATIC_INLINE bool CoroutineNativeStart(Coroutine* coroutine)
     }
 }
 
-STATIC_INLINE bool CoroutineNativeResume(Coroutine* coroutine)
+STATIC_INLINE bool Coroutine_nativeResume(Coroutine* coroutine)
 {
     SwitchToFiber(coroutine->fiber);
     return true;
 }
 
-STATIC_INLINE void CoroutineNativeYield(Coroutine* coroutine)
+STATIC_INLINE void Coroutine_nativeYield(Coroutine* coroutine)
 {
     (void)coroutine;
 
@@ -295,21 +299,21 @@ typedef struct
 
 struct Coroutine
 {
-    int         status;
+    CoroutineStatus status;
 
-    CoroutineFn func;
-    void*       args;
+    CoroutineFn     func;
+    void*           args;
 
 #if STORE_CALLER_CONTEXT
-    ucontext_t  caller;
-    ucontext_t  callee;
+    ucontext_t      caller;
+    ucontext_t      callee;
 #else
-    ucontext_t  context;
-    jmp_buf     jmpPoint;
+    ucontext_t      context;
+    jmp_buf         jmpPoint;
 #endif
 
-    int         stackSize;
-    char        stack[];
+    int             stackSize;
+    char            stack[];
 };
 
 #if !STORE_CALLER_CONTEXT
@@ -324,7 +328,7 @@ typedef struct CoroutineRunner
 THREAD_LOCAL jmp_buf s_threadJmpPoint;
 #endif
 
-static void Coroutine_Entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
+static void Coroutine_entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
 {
 #if !STORE_CALLER_CONTEXT
     CoroutineRunner* runner = (CoroutineRunner*)(((long long)hiPart << 32) | (long long)loPart);
@@ -343,7 +347,7 @@ static void Coroutine_Entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
     coroutine->func(coroutine->args);
 
     /* Mark the coroutine is end */
-    coroutine->status = COROUTINE_DEAD;
+    coroutine->status = CoroutineStatus_Dead;
     
     /* Return to primary thread */
     _longjmp(s_threadJmpPoint, 1);
@@ -354,14 +358,14 @@ static void Coroutine_Entry(DUMMYARGS unsigned int hiPart, unsigned int loPart)
     coroutine->func(coroutine->args);
 
     /* Mark the coroutine is end */
-    coroutine->status = COROUTINE_DEAD;
+    coroutine->status = CoroutineStatus_Dead;
     
     /* Return to primary thread */
     swapcontext(&coroutine->callee, &coroutine->caller);
 #endif
 }
 
-Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
+Coroutine* Coroutine_create(int stackSize, CoroutineFn func, void* args)
 {
     if (func)
     {
@@ -369,7 +373,7 @@ Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
         Coroutine* coroutine = (Coroutine*)malloc(sizeof(Coroutine) + stackSize);
         if (coroutine)
         {
-            coroutine->status       = COROUTINE_NORMAL;
+            coroutine->status       = CoroutineStatus_Normal;
             coroutine->func         = func;
             coroutine->args         = args;
             coroutine->stackSize    = stackSize;
@@ -385,7 +389,7 @@ Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
 
             unsigned int hiPart = (unsigned int)((long long)(&runner) >> 32);
             unsigned int loPart = (unsigned int)((long long)(&runner) & 0xFFFFFFFF);
-            makecontext(&coroutine->context, (void(*)())Coroutine_Entry, 2, hiPart, loPart);
+            makecontext(&coroutine->context, (void(*)())Coroutine_entry, 2, hiPart, loPart);
             swapcontext(&tmp, &coroutine->context);
 #endif
 
@@ -396,12 +400,12 @@ Coroutine* CoroutineCreate(int stackSize, CoroutineFn func, void* args)
     return NULL;
 }
 
-void CoroutineDestroy(Coroutine* coroutine)
+void Coroutine_destroy(Coroutine* coroutine)
 {
     free(coroutine);
 }
 
-static int CoroutineNativeStart(Coroutine* coroutine)
+static int Coroutine_nativeStart(Coroutine* coroutine)
 {
 #if STORE_CALLER_CONTEXT
     getcontext(&coroutine->callee);
@@ -413,7 +417,7 @@ static int CoroutineNativeStart(Coroutine* coroutine)
 
     unsigned int hiPart = (unsigned int)((long long)coroutine >> 32);
     unsigned int loPart = (unsigned int)((long long)coroutine & 0xFFFFFFFF);
-    makecontext(&coroutine->callee, (void(*)())Coroutine_Entry, 2, hiPart, loPart);
+    makecontext(&coroutine->callee, (void(*)())Coroutine_entry, 2, hiPart, loPart);
     swapcontext(&coroutine->caller, &coroutine->callee);
 
     return 1;
@@ -427,7 +431,7 @@ static int CoroutineNativeStart(Coroutine* coroutine)
 #endif
 }
 
-static int CoroutineNativeResume(Coroutine* coroutine)
+static int Coroutine_nativeResume(Coroutine* coroutine)
 {
 #if STORE_CALLER_CONTEXT
     swapcontext(&coroutine->caller, &coroutine->callee);
@@ -441,7 +445,7 @@ static int CoroutineNativeResume(Coroutine* coroutine)
 #endif
 }
 
-static void CoroutineNativeYield(Coroutine* coroutine)
+static void Coroutine_nativeYield(Coroutine* coroutine)
 {
 #if STORE_CALLER_CONTEXT
     swapcontext(&coroutine->callee, &coroutine->caller);
@@ -460,45 +464,52 @@ static void CoroutineNativeYield(Coroutine* coroutine)
 /* Running coroutine, NULL mean current is primary coroutine */
 THREAD_LOCAL Coroutine* s_runningCoroutine;
 
-bool CoroutineResume(Coroutine* coroutine)
+bool Coroutine_resume(Coroutine* coroutine)
 {
-    switch (CoroutineStatus(coroutine))
+    switch (Coroutine_status(coroutine))
     {
-    case COROUTINE_NORMAL:
+    case CoroutineStatus_Normal:
         s_runningCoroutine = coroutine;
-        coroutine->status = COROUTINE_RUNNING;
+        coroutine->status = CoroutineStatus_Running;
 
-        return CoroutineNativeStart(coroutine);
+        return Coroutine_nativeStart(coroutine);
 
-    case COROUTINE_SUSPENDED:
+    case CoroutineStatus_Suspended:
         s_runningCoroutine = coroutine;
-        coroutine->status = COROUTINE_RUNNING;
+        coroutine->status = CoroutineStatus_Running;
 
-        return CoroutineNativeResume(coroutine);
+        return Coroutine_nativeResume(coroutine);
 
     default:
         return false;
     }
 }
 
-void CoroutineYield(void)
+void Coroutine_yield(void)
 {
-    if (s_runningCoroutine && s_runningCoroutine->status == COROUTINE_RUNNING)
+    if (s_runningCoroutine && s_runningCoroutine->status == CoroutineStatus_Running)
     {
         Coroutine* coroutine = s_runningCoroutine;
         s_runningCoroutine = NULL;
 
-        coroutine->status = COROUTINE_SUSPENDED;
-        CoroutineNativeYield(coroutine);
+        coroutine->status = CoroutineStatus_Suspended;
+        Coroutine_nativeYield(coroutine);
     }
 }
 
+#if COROUTINE_YIELD_SHORTNAME
+void yield(void)
+{
+    Coroutine_yield();
+}
+#endif
+
 Coroutine* CoroutineRunning(void)
 {
-    return s_runningCoroutine && (s_runningCoroutine->status == COROUTINE_RUNNING) ? s_runningCoroutine : NULL;
+    return s_runningCoroutine && (s_runningCoroutine->status == CoroutineStatus_Running) ? s_runningCoroutine : NULL;
 }
 
-int CoroutineStatus(Coroutine* coroutine)
+CoroutineStatus Coroutine_status(Coroutine* coroutine)
 {
-    return coroutine ? coroutine->status : COROUTINE_DEAD;
+    return coroutine ? coroutine->status : CoroutineStatus_Dead;
 }
