@@ -269,7 +269,12 @@ STATIC_INLINE int swapcontext(ucontext_t *oucp, const ucontext_t *ucp)
 #elif defined(__linux__) || defined(__APPLE__)
 /* Begin of Unix's ucontext version */
 
-#if defined(__linux__)
+#include <setjmp.h>
+#include <unistd.h>
+#include <ucontext.h>
+
+/* Define the stack_t structure */
+#if defined(__linux__) && !defined(ANDROID) && !defined(__ANDROID__)
 #   ifndef __stack_t_defined
 #   define __stack_t_defined 1
 #   define __need_size_t
@@ -284,9 +289,12 @@ typedef struct
 #   endif
 #endif
 
-#include <setjmp.h>
-#include <unistd.h>
-#include <ucontext.h>
+/* Declare context functions */
+#if defined(ANDROID) || defined(__ANDROID__)
+extern int getcontext(ucontext_t * uctx);
+extern int swapcontext(ucontext_t * ouctx, const ucontext_t * uctx);
+extern void makecontext(ucontext_t * uctx, void (*func)(), int argc, ...);
+#endif
 
 #if !defined(_WIN32) || defined(_X86_)
 #define DUMMYARGS
