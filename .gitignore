@@ -2,4 +2,8 @@
 .vscode
 .DS_Store
 
+.a
+.o
+.exe
+
 /Build

@@ -13,4 +13,4 @@ struct Protothread
 
 #define Protothread_init(thread)                    (thread)->label = 0
 #define Protothread_waitUntil(thread, cond)         (thread)->label = __LINE__; case __LINE__: if (!(cond)) return 0
-#define Protothread_waitSeconds(thread, seconds)    (thread)->label = __LINE__; (thread)->timer = clock() + (seconds) * CLOCKS_PER_SEC; case __LINE__: if (clock() < (thread)->timer) return 0
+#define Protothread_waitSeconds(thread, seconds)    (thread)->label = __LINE__; (thread)->timer = clock() + (clock_t)((seconds) * CLOCKS_PER_SEC); case __LINE__: if (clock() < (thread)->timer) return 0
